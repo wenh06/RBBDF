@@ -7,7 +7,7 @@ from typing import Union, Optional, List, Tuple, Sequence, NoReturn, Any
 import numpy as np
 import pandas as pd
 import networkx as nx
-from networkx import algorithms as NA
+from networkx import algorithms as NXA
 import nxmetis
 
 
@@ -29,7 +29,7 @@ class BipartiteGraph(nx.Graph):
             self.add_nodes_from(col_nodes, bipartite="col")
         if edges is not None:
             self.add_edges_from(edges)
-        assert NA.bipartite.is_bipartite(self)
+        assert NXA.bipartite.is_bipartite(self)
 
     @property
     def row_nodes(self) -> list:
@@ -62,7 +62,7 @@ class BipartiteGraph(nx.Graph):
     def n_connected_components(self) -> int:
         """
         """
-        ncc = len(list(NA.components.connected_components(self)))
+        ncc = len(list(NXA.components.connected_components(self)))
         return ncc
 
     @property
@@ -71,7 +71,7 @@ class BipartiteGraph(nx.Graph):
         """
         cc = [
             self.subgraph(item) \
-                for item in NA.components.connected_components(self)
+                for item in NXA.components.connected_components(self)
         ]
         return cc
 
