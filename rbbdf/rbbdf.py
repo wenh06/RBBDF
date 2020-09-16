@@ -1,6 +1,7 @@
 """
 """
 import os
+from time import time
 from copy import deepcopy
 from itertools import repeat
 from typing import Union, Optional, List, Tuple, Set, Sequence, NoReturn, Any
@@ -21,9 +22,10 @@ __all__ = [
 ]
 
 
-def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, max_iter:int=300, tol:Optional[float]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, max_iter:int=300, tol_increment:Optional[float]=None, tol_time:Optional[float]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
     """
     """
+    start = time()
     if isinstance(df_or_arr, pd.DataFrame):
         bg = BipartiteGraph.from_dataframe(df_or_arr)
     elif isinstance(df_or_arr, (np.ndarray, Sequence)):
@@ -81,7 +83,9 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
             print(f"updated density = {density}, with prev_density = {prev_density}")
             if density >= density_threshold:
                 print("density requirement is fulfilled!")
-        if density - prev_density < (tol or 0.0001*density_threshold):
+        if density - prev_density < (tol_increment or 0.0001*density_threshold):
+            break
+        if time() - start > (tol_time or 20*60):
             break
         n_iter += 1
         if n_iter > max_iter:
@@ -111,9 +115,10 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
     return df, metadata
 
 
-def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, max_iter:int=300, tol:Optional[float]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, max_iter:int=300, tol_increment:Optional[float]=None, tol_time:Optional[float]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
     """
     """
+    start = time()
     if isinstance(df_or_arr, pd.DataFrame):
         bg = BipartiteGraph.from_dataframe(df_or_arr)
     elif isinstance(df_or_arr, (np.ndarray, Sequence)):
@@ -173,7 +178,9 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
             print(f"updated density = {density}, with prev_density = {prev_density}")
             if density >= density_threshold:
                 print("density requirement is fulfilled!")
-        if density - prev_density < (tol or 0.0001*density_threshold):
+        if density - prev_density < (tol_increment or 0.0001*density_threshold):
+            break
+        if time() - start > (tol_time or 20*60):
             break
         n_iter += 1
         if n_iter > max_iter:
