@@ -9,7 +9,7 @@ from numbers import Real, Number
 import numpy as np
 import pandas as pd
 import networkx as nx
-from networkx import algorithms as NA
+from networkx import algorithms as NXA
 import nxmetis
 from easydict import EasyDict as ED
 
@@ -44,7 +44,7 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
             print("*"*110)
             print(f"in the {n_iter}-th iteration...")
         prev_density = density
-        sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])
+        sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
         true_idx = 0
         for idx in sorted_inds:
             if is_border[idx]:
@@ -57,6 +57,8 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
                 or (bg.subgraph(part2_nodes).size==0)
             if skip_cond:
                 continue
+            if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
+                part1_nodes, part2_nodes = part2_nodes, part1_nodes
             # potential_diags = diags[:idx] + [part1_nodes, part2_nodes, sep_nodes] + diags[idx+1:]
             # potential_is_border = is_border[:idx] + [False,False,True] + is_border[idx+1:]
             potential_diags = diags[:idx] + [part1_nodes, part2_nodes]
@@ -132,7 +134,7 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
             print("*"*110)
             print(f"in the {n_iter}-th iteration...")
         prev_density = density
-        sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])
+        sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
         true_idx = 0
         for idx in sorted_inds:
             if is_border[idx]:
@@ -145,6 +147,8 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
                 or (bg.subgraph(part2_nodes).size==0)
             if skip_cond:
                 continue
+            if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
+                part1_nodes, part2_nodes = part2_nodes, part1_nodes
             sb1 = bg.subgraph(part1_nodes).sorted_connected_components
             sb2 = bg.subgraph(part2_nodes).sorted_connected_components
             # potential_diags = diags[:idx] + [list(item.nodes) for item in sb1] + [list(item.nodes) for item in sb2] + [sep_nodes] + diags[idx+1:]
