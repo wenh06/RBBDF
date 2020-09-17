@@ -20,7 +20,17 @@ class BipartiteGraph(nx.Graph):
     """
     """
     def __init__(self, incoming_graph_data:Optional[Any]=None, row_nodes:Optional[Sequence[str]]=None, col_nodes:Optional[Sequence[str]]=None, edges:Optional[Sequence[Tuple[str,str]]]=None) -> NoReturn:
-        """
+        """ finished, checked,
+
+        Parameters:
+        -----------
+        incoming_graph_data: input graph, optional,
+        row_nodes: sequence of str, optional,
+            (names) of the row nodes
+        col_nodes: sequence of str, optional,
+            (names) of the column nodes
+        edges: sequence of tuples of str, optional,
+            edges of the graph
         """
         super().__init__(incoming_graph_data)
         if row_nodes is not None:
@@ -30,6 +40,8 @@ class BipartiteGraph(nx.Graph):
         if edges is not None:
             self.add_edges_from(edges)
         assert NXA.bipartite.is_bipartite(self)
+        if not self.empty:
+            assert all([d["bipartite"] in ["row", "col"] for _, d in self.nodes(data=True)])
 
     @property
     def row_nodes(self) -> list:
@@ -99,6 +111,12 @@ class BipartiteGraph(nx.Graph):
         return sz
 
     @property
+    def empty(self) -> bool:
+        """
+        """
+        return (len(self.nodes) == 0)
+
+    @property
     def density(self) -> float:
         """
         """
@@ -117,7 +135,17 @@ class BipartiteGraph(nx.Graph):
 
     @staticmethod
     def from_array(arr:Union[Sequence, np.ndarray], row_names:Optional[Sequence[str]]=None, col_names:Optional[Sequence[str]]=None):
-        """
+        """ finished, checked,
+
+        Parameters:
+        -----------
+        arr: array_like,
+        row_names: sequence of str, optional,
+        col_names: sequence of str, optional,
+
+        Returns:
+        --------
+        bg: BipartiteGraph,
         """
         _arr = np.array(arr)
         assert _arr.ndim == 2
@@ -138,7 +166,16 @@ class BipartiteGraph(nx.Graph):
 
     @staticmethod
     def from_dataframe(df:pd.DataFrame):
-        """
+        """ finished, checked,
+
+        Parameters:
+        -----------
+        df: DataFrame,
+            from `df` to construct a `BipartiteGraph`
+
+        Returns:
+        --------
+        bg: BipartiteGraph,
         """
         row_names = [f"row_{item}" for item in df.index]
         col_names = [f"col_{item}" for item in df.columns]
@@ -150,7 +187,20 @@ class BipartiteGraph(nx.Graph):
         return bg
 
     def to_dataframe(self, rows:Optional[Sequence[str]]=None, cols:Optional[Sequence[str]]=None) -> pd.DataFrame:
-        """
+        """ finished, checked,
+
+        Parameters:
+        -----------
+        rows: sequence of str, optional,
+            names of the rows (in this specific ordering) to form the output `DataFrame`,
+            if is None, `self.row_nodes` will be used
+        cols: sequence of str, optional,
+            names of the columns (in this specific ordering) to form the output `DataFrame`,
+            if is None, `self.col_nodes` will be used
+
+        Returns:
+        --------
+        df: DataFrame,
         """
         df = pd.DataFrame(np.zeros(shape=self.shape)).astype(int)
         df.index = self.row_nodes
@@ -166,7 +216,12 @@ class BipartiteGraph(nx.Graph):
 
     @DeprecationWarning
     def GPVS(self) -> tuple:
-        """
+        """ finished, checked,
+
+        Returns:
+        --------
+        diag_part1, diag_part2, border_corner, border_row, border_col:
+            all `BipartiteGraph`, the 5 non-zero blocks corresponding to the `GPVS`
         """
         sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(self)
         if len(sep_nodes) > 0:

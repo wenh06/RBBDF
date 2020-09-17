@@ -1,4 +1,7 @@
 """
+References:
+-----------
+[1] Zhang, Yongfeng, et al. "Localized matrix factorization for recommendation based on matrix block diagonal forms." Proceedings of the 22nd international conference on World Wide Web. 2013.
 """
 import os
 from time import time
@@ -22,12 +25,50 @@ __all__ = [
 ]
 
 
-def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, max_iter:int=300, tol_increment:Optional[float]=None, tol_time:Optional[float]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, vs_options:Optional[nxmetis.MetisOptions]=None, max_iter:int=200, tol_increment:Optional[float]=None, tol_time:Optional[Real]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+    """ finished, checked,
+
+    transform a matrix-like into its RBBDF (Recursive Bordered Block Diagonal Form)
+    or its corresponding BDF (Block Diagonal Form) recursively
+
+    Parameters:
+    -----------
+    df_or_arr: DataFrame or array_like,
+        the DataFrame or array to transform into RBBDF
+    density_threshold: float,
+        termination condition of `BipartiteGraph` density
+    vs_options: MetisOptions, optional,
+        options for `nxmetis.vertex_separator`
+    max_iter: int, default 200,
+        termination condition of number of iterations
+    tol_increment: float, optional,
+        termination condition of increment of density of each iteration
+        if is None, defaults to 0.0001 * `density_threshold`
+    tol_time: real number, optional,
+        termination condition of duration of iteration
+        if is None, defaults to 20 minutes
+    fmt: str, default "rbbdf",
+        format of the output, can also be "bdf"
+    verbose: int, default 0,
+        print verbosity
+
+    Returns:
+    --------
+    df: DataFrame or sequence of DataFrame,
+        `df_or_arr` in RBBDF or in BDF
+    metadata: dict,
+        diags: sequence of sequence of str,
+            each sub-sequence is a sequence of names of the rows and columns of a diagonal block
+        is_border: sequence of bool,
+            "border" indicators for elements in `diags`
     """
-    """
+    assert fmt.lower() in ["rbbdf", "bdf"]
     start = time()
     if isinstance(df_or_arr, pd.DataFrame):
-        bg = BipartiteGraph.from_dataframe(df_or_arr)
+        df = df_or_arr.copy()
+        df.index = df.index.map(str)
+        df.columns = df.columns.map(str)
+        bg = BipartiteGraph.from_dataframe(df)
     elif isinstance(df_or_arr, (np.ndarray, Sequence)):
         bg = BipartiteGraph.from_array(df_or_arr)
 
@@ -53,7 +94,7 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
                 continue
             true_idx += 1
             B = bg.subgraph(diags[idx])
-            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(B)
+            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(B, options=vs_options)
             skip_cond = \
                 (bg.subgraph(part1_nodes).size==0) \
                 or (bg.subgraph(part2_nodes).size==0)
@@ -115,12 +156,54 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
     return df, metadata
 
 
-def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, max_iter:int=300, tol_increment:Optional[float]=None, tol_time:Optional[float]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, vs_options:Optional[nxmetis.MetisOptions]=None, max_iter:int=200, tol_increment:Optional[float]=None, tol_time:Optional[Real]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+    """ finished, checked,
+
+    transform a matrix-like into its RBBDF (Recursive Bordered Block Diagonal Form)
+    or its corresponding BDF (Block Diagonal Form) recursively
+
+    the difference compared to `RBBDF` is that
+    after each bisection, each of the 2 non-border diagonal part
+    will be further split into several diagonal blocks if applicable
+
+    Parameters:
+    -----------
+    df_or_arr: DataFrame or array_like,
+        the DataFrame or array to transform into RBBDF
+    density_threshold: float,
+        termination condition of `BipartiteGraph` density
+    vs_options: MetisOptions, optional,
+        options for `nxmetis.vertex_separator`
+    max_iter: int, default 200,
+        termination condition of number of iterations
+    tol_increment: float, optional,
+        termination condition of increment of density of each iteration
+        if is None, defaults to 0.0001 * `density_threshold`
+    tol_time: real number, optional,
+        termination condition of duration of iteration
+        if is None, defaults to 20 minutes
+    fmt: str, default "rbbdf", case insensitive,
+        format of the output, can also be "bdf"
+    verbose: int, default 0,
+        print verbosity
+
+    Returns:
+    --------
+    df: DataFrame or sequence of DataFrame,
+        `df_or_arr` in RBBDF or in BDF
+    metadata: dict,
+        diags: sequence of sequence of str,
+            each sub-sequence is a sequence of names of the rows and columns of a diagonal block
+        is_border: sequence of bool,
+            "border" indicators for elements in `diags`
     """
-    """
+    assert fmt.lower() in ["rbbdf", "bdf"]
     start = time()
     if isinstance(df_or_arr, pd.DataFrame):
-        bg = BipartiteGraph.from_dataframe(df_or_arr)
+        df = df_or_arr.copy()
+        df.index = df.index.map(str)
+        df.columns = df.columns.map(str)
+        bg = BipartiteGraph.from_dataframe(df)
     elif isinstance(df_or_arr, (np.ndarray, Sequence)):
         bg = BipartiteGraph.from_array(df_or_arr)
 
@@ -146,7 +229,7 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
                 continue
             true_idx += 1
             B = bg.subgraph(diags[idx])
-            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(B)
+            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(B, options=vs_options)
             skip_cond = \
                 (bg.subgraph(part1_nodes).size==0) \
                 or (bg.subgraph(part2_nodes).size==0)
@@ -211,15 +294,49 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
 
 
 def _compute_density(bg:BipartiteGraph, diags:Sequence[Sequence[str]], is_border:Sequence[bool]) -> float:
-    """
+    """ finished, checked,
+
+    compute density for a RBBDF BipartiteGraph
+
+    Parameters:
+    -----------
+    bg: BipartiteGraph,
+        the `BipartiteGraph` to compute density from whose corresponding matrix
+    diags: sequence of sequence of str,
+        each subsequence is a sequence of names of the nodes in `bg`,
+        which corresponds to a diagonal block in the corresponding matrix
+    is_border: sequence of bool,
+        "border" indicators for elements in `diags`,
+
+    Returns:
+    --------
+    rho: float,
+        density of the `BipartiteGraph` `bg`
     """
     X_tilde = _to_tilde_form(bg, diags, is_border)
-    density = sum([item.n_nonzeros for item in X_tilde]) / sum([item.size for item in X_tilde])
-    return density
+    rho = sum([item.n_nonzeros for item in X_tilde]) / sum([item.size for item in X_tilde])
+    return rho
 
 
 def _to_tilde_form(bg:BipartiteGraph, diags:Sequence[Sequence[str]], is_border:Sequence[bool]) -> Sequence[BipartiteGraph]:
-    """
+    """ finished, checked,
+
+    transforms a `BipartiteGraph` to the corresponding BDF
+
+    Parameters:
+    -----------
+    bg: BipartiteGraph,
+        the `BipartiteGraph` to compute density from whose corresponding matrix
+    diags: sequence of sequence of str,
+        each subsequence is a sequence of names of the nodes in `bg`,
+        which corresponds to a diagonal block in the corresponding matrix
+    is_border: sequence of bool,
+        "border" indicators for elements in `diags`,
+
+    Returns:
+    --------
+    X_tilde: sequence of BipartiteGraph,
+        each element is constructed from `bg`, according to rules of ref. [1]
     """
     X_tilde = []
     for idx, (d, ib) in enumerate(zip(diags, is_border)):
@@ -230,4 +347,32 @@ def _to_tilde_form(bg:BipartiteGraph, diags:Sequence[Sequence[str]], is_border:S
             if is_border[new_idx]:
                 block_nodes += diags[new_idx]
         X_tilde.append(bg.subgraph(block_nodes))
+    return X_tilde
+
+
+def _rbbdf_to_bdf(df_rbbdf:pd.DataFrame, diags:Sequence[Sequence[str]], is_border:Sequence[bool]) -> Sequence[BipartiteGraph]:
+    """ finished, checked,
+
+    transforms a RBBDF `DataFrame` of to the format of BDF
+
+    Parameters:
+    -----------
+    df_rbbdf: DataFrame,
+        the RBBDF `DataFrame` to transform to the format of BDF
+    diags: sequence of sequence of str,
+        each subsequence is a sequence of names of the nodes in `bg`,
+        which corresponds to a diagonal block in the corresponding matrix
+    is_border: sequence of bool,
+        "border" indicators for elements in `diags`,
+    
+    Returns:
+    --------
+    X_tilde: sequence of BipartiteGraph,
+        each element is constructed from `bg`, according to rules of ref. [1]
+    """
+    bg = BipartiteGraph.from_dataframe(df_rbbdf)
+    X_tilde = _to_tilde_form(bg, diags, is_border)
+    X_tilde = [
+        bg.subgraph(item).to_dataframe() for item in X_tilde
+    ]
     return X_tilde
