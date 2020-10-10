@@ -2,6 +2,11 @@
 References:
 -----------
 [1] Zhang, Yongfeng, et al. "Localized matrix factorization for recommendation based on matrix block diagonal forms." Proceedings of the 22nd international conference on World Wide Web. 2013.
+
+key method: `nxmetis.vertex_separator`
+
+TODO:
+consider GPVS with weighted edges
 """
 import os
 from time import time

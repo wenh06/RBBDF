@@ -11,7 +11,8 @@ from networkx import algorithms as NXA
 import nxmetis
 from scipy.sparse import (
     bsr_matrix, coo_matrix, csc_matrix, csr_matrix,
-    dia_matrix, dok_matrix, lil_matrix
+    dia_matrix, dok_matrix, lil_matrix,
+    spmatrix,
 )
 
 
@@ -20,7 +21,9 @@ __all__ = [
 ]
 
 
-ScipySparseMatrix = Union[bsr_matrix, coo_matrix, csc_matrix, csr_matrix, dia_matrix, dok_matrix, lil_matrix]
+ScipySparseMatrix = Union[
+    bsr_matrix, coo_matrix, csc_matrix, csr_matrix, dia_matrix, dok_matrix, lil_matrix, spmatrix
+]
 
 
 class BipartiteGraph(nx.Graph):
