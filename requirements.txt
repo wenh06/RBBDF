@@ -2,4 +2,5 @@ networkx
 nxmetis
 numpy
 pandas
+scipy
 easydict
