@@ -9,11 +9,18 @@ import pandas as pd
 import networkx as nx
 from networkx import algorithms as NXA
 import nxmetis
+from scipy.sparse import (
+    bsr_matrix, coo_matrix, csc_matrix, csr_matrix,
+    dia_matrix, dok_matrix, lil_matrix
+)
 
 
 __all__ = [
     "BipartiteGraph",
 ]
+
+
+ScipySparseMatrix = Union[bsr_matrix, coo_matrix, csc_matrix, csr_matrix, dia_matrix, dok_matrix, lil_matrix]
 
 
 class BipartiteGraph(nx.Graph):
@@ -183,6 +190,29 @@ class BipartiteGraph(nx.Graph):
             arr=df.values,
             row_names=row_names,
             col_names=col_names,
+        )
+        return bg
+
+    @staticmethod
+    def from_sparse(ssm:ScipySparseMatrix):
+        """ finished, checked,
+
+        Parameters:
+        -----------
+        ssm: ScipySparseMatrix,
+            a scipy sparse matrix (can be of format bsr, coo, csc, csr, dia, dok, lil)
+
+        Returns:
+        --------
+        bg: BipartiteGraph,
+        """
+        nz_row, nz_col = ssm.nonzero()
+        nz_row = [f"row_{idx}" for idx in nz_row]
+        nz_col = [f"col_{idx}" for idx in nz_col]
+        bg = BipartiteGraph(
+            row_nodes=sorted(list(set(nz_row))),
+            col_nodes=sorted(list(set(nz_col))),
+            edges=[(r, c) for r, c in zip(nz_row, nz_col)]
         )
         return bg
 
