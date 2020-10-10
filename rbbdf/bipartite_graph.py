@@ -13,6 +13,7 @@ from scipy.sparse import (
     bsr_matrix, coo_matrix, csc_matrix, csr_matrix,
     dia_matrix, dok_matrix, lil_matrix,
     spmatrix,
+    load_npz,
 )
 
 
@@ -197,19 +198,24 @@ class BipartiteGraph(nx.Graph):
         return bg
 
     @staticmethod
-    def from_sparse(ssm:ScipySparseMatrix):
+    def from_sparse(ssm:Union[ScipySparseMatrix,str]):
         """ finished, checked,
 
         Parameters:
         -----------
-        ssm: ScipySparseMatrix,
-            a scipy sparse matrix (can be of format bsr, coo, csc, csr, dia, dok, lil)
+        ssm: ScipySparseMatrix or str,
+            a scipy sparse matrix (can be of format bsr, coo, csc, csr, dia, dok, lil);
+            or the path to a .npz file that stores a scipy sparse matrix
 
         Returns:
         --------
         bg: BipartiteGraph,
         """
-        nz_row, nz_col = ssm.nonzero()
+        if isinstance(ssm, str):
+            _ssm = load_npz(ssm)
+        else:
+            _ssm = ssm
+        nz_row, nz_col = _ssm.nonzero()
         nz_row = [f"row_{idx}" for idx in nz_row]
         nz_col = [f"col_{idx}" for idx in nz_col]
         bg = BipartiteGraph(
