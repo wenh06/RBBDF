@@ -1,5 +1,4 @@
 networkx
-nxmetis
 numpy
 pandas
 scipy

@@ -1,0 +1,3 @@
+[submodule "nxmetis"]
+	path = nxmetis
+	url = https://github.com/wenh06/networkx-metis.git
