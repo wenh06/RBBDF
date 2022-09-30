@@ -19,8 +19,9 @@ import numpy as np
 import pandas as pd
 import nxmetis
 from easydict import EasyDict as ED
+from tqdm.auto import tqdm
 
-from .bipartite_graph import BipartiteGraph
+from .bipartite_graph import BipartiteGraph, ScipySparseMatrix
 
 
 __all__ = [
@@ -30,14 +31,14 @@ __all__ = [
 
 
 def RBBDF(
-    df_or_arr: Union[pd.DataFrame, np.ndarray, Sequence],
+    df_or_arr: Union[pd.DataFrame, np.ndarray, ScipySparseMatrix, Sequence],
     density_threshold: float,
     vs_options: Optional[nxmetis.MetisOptions] = None,
     max_iter: int = 200,
     tol_increment: Optional[float] = None,
     tol_time: Optional[Real] = None,
     fmt: str = "rbbdf",
-    verbose: int = 0,
+    verbose: int = 1,
 ) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
     """finished, checked,
 
@@ -62,7 +63,7 @@ def RBBDF(
         if is None, defaults to 20 minutes
     fmt: str, default "rbbdf",
         format of the output, can also be "bdf"
-    verbose: int, default 0,
+    verbose: int, default 1,
         print verbosity
 
     Returns:
@@ -83,8 +84,12 @@ def RBBDF(
         df.index = df.index.map(str)
         df.columns = df.columns.map(str)
         bg = BipartiteGraph.from_dataframe(df)
+    elif isinstance(df_or_arr, ScipySparseMatrix.__args__):
+        bg = BipartiteGraph.from_sparse(df_or_arr)
     elif isinstance(df_or_arr, (np.ndarray, Sequence)):
         bg = BipartiteGraph.from_array(df_or_arr)
+    else:
+        raise TypeError(f"unsupported type of `df_or_arr`: {type(df_or_arr)}")
 
     # init
     diags, is_border = [list(bg.nodes())], [False]
@@ -95,61 +100,67 @@ def RBBDF(
         print(f"init density = {density}")
 
     # recursive iteration
-    n_iter = 0
-    while prev_density < density < density_threshold:
-        if verbose >= 1:
-            print("*" * 110)
-            print(f"in the {n_iter}-th iteration...")
-        prev_density = density
-        sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
-        true_idx = 0
-        for idx in sorted_inds:
-            if is_border[idx]:
-                continue
-            true_idx += 1
-            B = bg.subgraph(diags[idx])
-            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(
-                B, options=vs_options
-            )
-            skip_cond = (bg.subgraph(part1_nodes).size == 0) or (
-                bg.subgraph(part2_nodes).size == 0
-            )
-            if skip_cond:
-                continue
-            if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
-                part1_nodes, part2_nodes = part2_nodes, part1_nodes
-            # potential_diags = diags[:idx] + [part1_nodes, part2_nodes, sep_nodes] + diags[idx+1:]
-            # potential_is_border = is_border[:idx] + [False,False,True] + is_border[idx+1:]
-            potential_diags = diags[:idx] + [part1_nodes, part2_nodes]
-            potential_is_border = is_border[:idx] + [False, False]
-            if len(sep_nodes) > 0:
-                potential_diags.append(sep_nodes)
-                potential_is_border.append(True)
-            potential_diags = potential_diags + diags[idx + 1 :]
-            potential_is_border = potential_is_border + is_border[idx + 1 :]
-            potential_density = _compute_density(
-                bg, potential_diags, potential_is_border
-            )
-            if potential_density > prev_density:
-                density = potential_density
-                diags = deepcopy(potential_diags)
-                is_border = deepcopy(potential_is_border)
-                if verbose >= 2:
-                    print(
-                        f"at the {true_idx}-th largest block, density is improved from {prev_density} to {potential_density}"
-                    )
-                break
-        if verbose >= 1:
-            print(f"updated density = {density}, with prev_density = {prev_density}")
+    with tqdm(
+        range(max_iter), disable=not verbose, total=max_iter, desc="Iter"
+    ) as pbar:
+        for n_iter in pbar:
+            postfix_str = ""
+            prev_density = density
+            sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
+            true_idx = 0
+            for idx in sorted_inds:
+                if is_border[idx]:
+                    continue
+                true_idx += 1
+                B = bg.subgraph(diags[idx])
+                sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(
+                    B, options=vs_options
+                )
+                skip_cond = (bg.subgraph(part1_nodes).size == 0) or (
+                    bg.subgraph(part2_nodes).size == 0
+                )
+                if skip_cond:
+                    continue
+                if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
+                    part1_nodes, part2_nodes = part2_nodes, part1_nodes
+                # potential_diags = diags[:idx] + [part1_nodes, part2_nodes, sep_nodes] + diags[idx+1:]
+                # potential_is_border = is_border[:idx] + [False,False,True] + is_border[idx+1:]
+                potential_diags = diags[:idx] + [part1_nodes, part2_nodes]
+                potential_is_border = is_border[:idx] + [False, False]
+                if len(sep_nodes) > 0:
+                    potential_diags.append(sep_nodes)
+                    potential_is_border.append(True)
+                potential_diags = potential_diags + diags[idx + 1 :]
+                potential_is_border = potential_is_border + is_border[idx + 1 :]
+                potential_density = _compute_density(
+                    bg, potential_diags, potential_is_border
+                )
+                if potential_density > prev_density:
+                    density = potential_density
+                    diags = deepcopy(potential_diags)
+                    is_border = deepcopy(potential_is_border)
+                    if verbose >= 2:
+                        postfix_str += f"at the {true_idx}-th largest block, density {prev_density:.5f} -> {potential_density:.5f}."
+                    break
+            if verbose >= 1:
+                postfix_str += f" density {prev_density:.5f} -> {density:.5f}"
+                if density >= density_threshold:
+                    postfix_str += ", density requirement is fulfilled!"
+                pbar.set_postfix_str(postfix_str)
+
+            # termination conditions
             if density >= density_threshold:
-                print("density requirement is fulfilled!")
-        if density - prev_density < (tol_increment or 0.0001 * density_threshold):
-            break
-        if time() - start > (tol_time or 20 * 60):
-            break
-        n_iter += 1
-        if n_iter > max_iter:
-            break
+                if verbose >= 1:
+                    print("density requirement is fulfilled!")
+                break
+            if density - prev_density < (tol_increment or 0.0001 * density_threshold):
+                if verbose >= 1:
+                    print("density increment is too small!")
+                break
+            if time() - start > (tol_time or 20 * 60):
+                if verbose >= 1:
+                    print("time limit is reached!")
+                break
 
     metadata = ED(
         diags=diags,
@@ -174,7 +185,7 @@ def RBBDF(
 
 
 def RBBDF_v2(
-    df_or_arr: Union[pd.DataFrame, np.ndarray, Sequence],
+    df_or_arr: Union[pd.DataFrame, np.ndarray, ScipySparseMatrix, Sequence],
     density_threshold: float,
     vs_options: Optional[nxmetis.MetisOptions] = None,
     max_iter: int = 200,
@@ -231,8 +242,12 @@ def RBBDF_v2(
         df.index = df.index.map(str)
         df.columns = df.columns.map(str)
         bg = BipartiteGraph.from_dataframe(df)
+    elif isinstance(df_or_arr, ScipySparseMatrix.__args__):
+        bg = BipartiteGraph.from_sparse(df_or_arr)
     elif isinstance(df_or_arr, (np.ndarray, Sequence)):
         bg = BipartiteGraph.from_array(df_or_arr)
+    else:
+        raise TypeError(f"unsupported type of `df_or_arr`: {type(df_or_arr)}")
 
     # init
     diags, is_border = [list(bg.nodes())], [False]
@@ -243,69 +258,75 @@ def RBBDF_v2(
         print(f"init density = {density}")
 
     # recursive iteration
-    n_iter = 0
-    while prev_density < density < density_threshold:
-        if verbose >= 1:
-            print("*" * 110)
-            print(f"in the {n_iter}-th iteration...")
-        prev_density = density
-        sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
-        true_idx = 0
-        for idx in sorted_inds:
-            if is_border[idx]:
-                continue
-            true_idx += 1
-            B = bg.subgraph(diags[idx])
-            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(
-                B, options=vs_options
-            )
-            skip_cond = (bg.subgraph(part1_nodes).size == 0) or (
-                bg.subgraph(part2_nodes).size == 0
-            )
-            if skip_cond:
-                continue
-            if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
-                part1_nodes, part2_nodes = part2_nodes, part1_nodes
-            sb1 = bg.subgraph(part1_nodes).sorted_connected_components
-            sb2 = bg.subgraph(part2_nodes).sorted_connected_components
-            # potential_diags = diags[:idx] + [list(item.nodes) for item in sb1] + [list(item.nodes) for item in sb2] + [sep_nodes] + diags[idx+1:]
-            # potential_is_border = is_border[:idx] + list(repeat(False, len(sb1)+len(sb2))) + [True] + is_border[idx+1:]
-            potential_diags = (
-                diags[:idx]
-                + [list(item.nodes) for item in sb1]
-                + [list(item.nodes) for item in sb2]
-            )
-            potential_is_border = is_border[:idx] + list(
-                repeat(False, len(sb1) + len(sb2))
-            )
-            if len(sep_nodes) > 0:
-                potential_diags.append(sep_nodes)
-                potential_is_border.append(True)
-            potential_diags = potential_diags + diags[idx + 1 :]
-            potential_is_border = potential_is_border + is_border[idx + 1 :]
-            potential_density = _compute_density(
-                bg, potential_diags, potential_is_border
-            )
-            if potential_density > prev_density:
-                density = potential_density
-                diags = deepcopy(potential_diags)
-                is_border = deepcopy(potential_is_border)
-                if verbose >= 2:
-                    print(
-                        f"at the {true_idx}-th largest block, density is improved from {prev_density} to {potential_density}"
-                    )
-                break
-        if verbose >= 1:
-            print(f"updated density = {density}, with prev_density = {prev_density}")
+    with tqdm(
+        range(max_iter), disable=not verbose, total=max_iter, desc="Iter"
+    ) as pbar:
+        for n_iter in pbar:
+            postfix_str = ""
+            prev_density = density
+            sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
+            true_idx = 0
+            for idx in sorted_inds:
+                if is_border[idx]:
+                    continue
+                true_idx += 1
+                B = bg.subgraph(diags[idx])
+                sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(
+                    B, options=vs_options
+                )
+                skip_cond = (bg.subgraph(part1_nodes).size == 0) or (
+                    bg.subgraph(part2_nodes).size == 0
+                )
+                if skip_cond:
+                    continue
+                if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
+                    part1_nodes, part2_nodes = part2_nodes, part1_nodes
+                sb1 = bg.subgraph(part1_nodes).sorted_connected_components
+                sb2 = bg.subgraph(part2_nodes).sorted_connected_components
+                # potential_diags = diags[:idx] + [list(item.nodes) for item in sb1] + [list(item.nodes) for item in sb2] + [sep_nodes] + diags[idx+1:]
+                # potential_is_border = is_border[:idx] + list(repeat(False, len(sb1)+len(sb2))) + [True] + is_border[idx+1:]
+                potential_diags = (
+                    diags[:idx]
+                    + [list(item.nodes) for item in sb1]
+                    + [list(item.nodes) for item in sb2]
+                )
+                potential_is_border = is_border[:idx] + list(
+                    repeat(False, len(sb1) + len(sb2))
+                )
+                if len(sep_nodes) > 0:
+                    potential_diags.append(sep_nodes)
+                    potential_is_border.append(True)
+                potential_diags = potential_diags + diags[idx + 1 :]
+                potential_is_border = potential_is_border + is_border[idx + 1 :]
+                potential_density = _compute_density(
+                    bg, potential_diags, potential_is_border
+                )
+                if potential_density > prev_density:
+                    density = potential_density
+                    diags = deepcopy(potential_diags)
+                    is_border = deepcopy(potential_is_border)
+                    if verbose >= 2:
+                        postfix_str += f"at the {true_idx}-th largest block, density {prev_density:.5f} -> {potential_density:.5f}."
+                    break
+            if verbose >= 1:
+                postfix_str += f" density {prev_density:.5f} -> {density:.5f}"
+                if density >= density_threshold:
+                    postfix_str += ", density requirement is fulfilled!"
+                pbar.set_postfix_str(postfix_str)
+
+            # termination conditions
             if density >= density_threshold:
-                print("density requirement is fulfilled!")
-        if density - prev_density < (tol_increment or 0.0001 * density_threshold):
-            break
-        if time() - start > (tol_time or 20 * 60):
-            break
-        n_iter += 1
-        if n_iter > max_iter:
-            break
+                if verbose >= 1:
+                    print("density requirement is fulfilled!")
+                break
+            if density - prev_density < (tol_increment or 0.0001 * density_threshold):
+                if verbose >= 1:
+                    print("density increment is too small!")
+                break
+            if time() - start > (tol_time or 20 * 60):
+                if verbose >= 1:
+                    print("time limit is reached!")
+                break
 
     metadata = ED(
         diags=diags,
