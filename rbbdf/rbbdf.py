@@ -8,17 +8,15 @@ key method: `nxmetis.vertex_separator`
 TODO:
 consider GPVS with weighted edges
 """
-import os
+
 from time import time
 from copy import deepcopy
 from itertools import repeat
-from typing import Union, Optional, List, Tuple, Set, Sequence, NoReturn, Any
-from numbers import Real, Number
+from typing import Union, Optional, Tuple, Sequence
+from numbers import Real
 
 import numpy as np
 import pandas as pd
-import networkx as nx
-from networkx import algorithms as NXA
 import nxmetis
 from easydict import EasyDict as ED
 
@@ -26,12 +24,22 @@ from .bipartite_graph import BipartiteGraph
 
 
 __all__ = [
-    "RBBDF", "RBBDF_v2",
+    "RBBDF",
+    "RBBDF_v2",
 ]
 
 
-def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, vs_options:Optional[nxmetis.MetisOptions]=None, max_iter:int=200, tol_increment:Optional[float]=None, tol_time:Optional[Real]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
-    """ finished, checked,
+def RBBDF(
+    df_or_arr: Union[pd.DataFrame, np.ndarray, Sequence],
+    density_threshold: float,
+    vs_options: Optional[nxmetis.MetisOptions] = None,
+    max_iter: int = 200,
+    tol_increment: Optional[float] = None,
+    tol_time: Optional[Real] = None,
+    fmt: str = "rbbdf",
+    verbose: int = 0,
+) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+    """finished, checked,
 
     transform a matrix-like into its RBBDF (Recursive Bordered Block Diagonal Form)
     or its corresponding BDF (Block Diagonal Form) recursively
@@ -66,6 +74,7 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
             each sub-sequence is a sequence of names of the rows and columns of a diagonal block
         is_border: sequence of bool,
             "border" indicators for elements in `diags`
+
     """
     assert fmt.lower() in ["rbbdf", "bdf"]
     start = time()
@@ -84,12 +93,12 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
 
     if verbose >= 1:
         print(f"init density = {density}")
-    
+
     # recursive iteration
     n_iter = 0
     while prev_density < density < density_threshold:
         if verbose >= 1:
-            print("*"*110)
+            print("*" * 110)
             print(f"in the {n_iter}-th iteration...")
         prev_density = density
         sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
@@ -99,10 +108,12 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
                 continue
             true_idx += 1
             B = bg.subgraph(diags[idx])
-            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(B, options=vs_options)
-            skip_cond = \
-                (bg.subgraph(part1_nodes).size==0) \
-                or (bg.subgraph(part2_nodes).size==0)
+            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(
+                B, options=vs_options
+            )
+            skip_cond = (bg.subgraph(part1_nodes).size == 0) or (
+                bg.subgraph(part2_nodes).size == 0
+            )
             if skip_cond:
                 continue
             if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
@@ -110,28 +121,31 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
             # potential_diags = diags[:idx] + [part1_nodes, part2_nodes, sep_nodes] + diags[idx+1:]
             # potential_is_border = is_border[:idx] + [False,False,True] + is_border[idx+1:]
             potential_diags = diags[:idx] + [part1_nodes, part2_nodes]
-            potential_is_border = is_border[:idx] + [False,False]
+            potential_is_border = is_border[:idx] + [False, False]
             if len(sep_nodes) > 0:
                 potential_diags.append(sep_nodes)
                 potential_is_border.append(True)
-            potential_diags = potential_diags + diags[idx+1:]
-            potential_is_border = potential_is_border + is_border[idx+1:]
-            potential_density = \
-                _compute_density(bg, potential_diags, potential_is_border)
+            potential_diags = potential_diags + diags[idx + 1 :]
+            potential_is_border = potential_is_border + is_border[idx + 1 :]
+            potential_density = _compute_density(
+                bg, potential_diags, potential_is_border
+            )
             if potential_density > prev_density:
                 density = potential_density
                 diags = deepcopy(potential_diags)
                 is_border = deepcopy(potential_is_border)
                 if verbose >= 2:
-                    print(f"at the {true_idx}-th largest block, density is improved from {prev_density} to {potential_density}")
+                    print(
+                        f"at the {true_idx}-th largest block, density is improved from {prev_density} to {potential_density}"
+                    )
                 break
         if verbose >= 1:
             print(f"updated density = {density}, with prev_density = {prev_density}")
             if density >= density_threshold:
                 print("density requirement is fulfilled!")
-        if density - prev_density < (tol_increment or 0.0001*density_threshold):
+        if density - prev_density < (tol_increment or 0.0001 * density_threshold):
             break
-        if time() - start > (tol_time or 20*60):
+        if time() - start > (tol_time or 20 * 60):
             break
         n_iter += 1
         if n_iter > max_iter:
@@ -148,12 +162,10 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
             newB = bg.subgraph(d)
             rows += newB.row_nodes
             cols += newB.col_nodes
-        df = bg.to_dataframe(rows=rows,cols=cols)
+        df = bg.to_dataframe(rows=rows, cols=cols)
     elif fmt.lower() == "bdf":
-        X_tilde = _to_tilde_form(bg, diags, borders)
-        df = [
-            item.to_dataframe() for item in X_tilde
-        ]
+        X_tilde = _to_tilde_form(bg, diags, is_border)
+        df = [item.to_dataframe() for item in X_tilde]
 
     if verbose == 0:
         metadata = ED()
@@ -161,8 +173,17 @@ def RBBDF(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold
     return df, metadata
 
 
-def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_threshold:float, vs_options:Optional[nxmetis.MetisOptions]=None, max_iter:int=200, tol_increment:Optional[float]=None, tol_time:Optional[Real]=None, fmt:str="rbbdf", verbose:int=0) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
-    """ finished, checked,
+def RBBDF_v2(
+    df_or_arr: Union[pd.DataFrame, np.ndarray, Sequence],
+    density_threshold: float,
+    vs_options: Optional[nxmetis.MetisOptions] = None,
+    max_iter: int = 200,
+    tol_increment: Optional[float] = None,
+    tol_time: Optional[Real] = None,
+    fmt: str = "rbbdf",
+    verbose: int = 0,
+) -> Tuple[Union[Sequence[pd.DataFrame], pd.DataFrame], dict]:
+    """finished, checked,
 
     transform a matrix-like into its RBBDF (Recursive Bordered Block Diagonal Form)
     or its corresponding BDF (Block Diagonal Form) recursively
@@ -201,6 +222,7 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
             each sub-sequence is a sequence of names of the rows and columns of a diagonal block
         is_border: sequence of bool,
             "border" indicators for elements in `diags`
+
     """
     assert fmt.lower() in ["rbbdf", "bdf"]
     start = time()
@@ -219,12 +241,12 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
 
     if verbose >= 1:
         print(f"init density = {density}")
-    
+
     # recursive iteration
     n_iter = 0
     while prev_density < density < density_threshold:
         if verbose >= 1:
-            print("*"*110)
+            print("*" * 110)
             print(f"in the {n_iter}-th iteration...")
         prev_density = density
         sorted_inds = np.argsort([bg.subgraph(item).size for item in diags])[::-1]
@@ -234,10 +256,12 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
                 continue
             true_idx += 1
             B = bg.subgraph(diags[idx])
-            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(B, options=vs_options)
-            skip_cond = \
-                (bg.subgraph(part1_nodes).size==0) \
-                or (bg.subgraph(part2_nodes).size==0)
+            sep_nodes, part1_nodes, part2_nodes = nxmetis.vertex_separator(
+                B, options=vs_options
+            )
+            skip_cond = (bg.subgraph(part1_nodes).size == 0) or (
+                bg.subgraph(part2_nodes).size == 0
+            )
             if skip_cond:
                 continue
             if bg.subgraph(part1_nodes).size < bg.subgraph(part2_nodes).size:
@@ -246,29 +270,38 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
             sb2 = bg.subgraph(part2_nodes).sorted_connected_components
             # potential_diags = diags[:idx] + [list(item.nodes) for item in sb1] + [list(item.nodes) for item in sb2] + [sep_nodes] + diags[idx+1:]
             # potential_is_border = is_border[:idx] + list(repeat(False, len(sb1)+len(sb2))) + [True] + is_border[idx+1:]
-            potential_diags = diags[:idx] + [list(item.nodes) for item in sb1] + [list(item.nodes) for item in sb2]
-            potential_is_border = is_border[:idx] + list(repeat(False, len(sb1)+len(sb2)))
+            potential_diags = (
+                diags[:idx]
+                + [list(item.nodes) for item in sb1]
+                + [list(item.nodes) for item in sb2]
+            )
+            potential_is_border = is_border[:idx] + list(
+                repeat(False, len(sb1) + len(sb2))
+            )
             if len(sep_nodes) > 0:
                 potential_diags.append(sep_nodes)
                 potential_is_border.append(True)
-            potential_diags = potential_diags + diags[idx+1:]
-            potential_is_border = potential_is_border + is_border[idx+1:]
-            potential_density = \
-                _compute_density(bg, potential_diags, potential_is_border)
+            potential_diags = potential_diags + diags[idx + 1 :]
+            potential_is_border = potential_is_border + is_border[idx + 1 :]
+            potential_density = _compute_density(
+                bg, potential_diags, potential_is_border
+            )
             if potential_density > prev_density:
                 density = potential_density
                 diags = deepcopy(potential_diags)
                 is_border = deepcopy(potential_is_border)
                 if verbose >= 2:
-                    print(f"at the {true_idx}-th largest block, density is improved from {prev_density} to {potential_density}")
+                    print(
+                        f"at the {true_idx}-th largest block, density is improved from {prev_density} to {potential_density}"
+                    )
                 break
         if verbose >= 1:
             print(f"updated density = {density}, with prev_density = {prev_density}")
             if density >= density_threshold:
                 print("density requirement is fulfilled!")
-        if density - prev_density < (tol_increment or 0.0001*density_threshold):
+        if density - prev_density < (tol_increment or 0.0001 * density_threshold):
             break
-        if time() - start > (tol_time or 20*60):
+        if time() - start > (tol_time or 20 * 60):
             break
         n_iter += 1
         if n_iter > max_iter:
@@ -285,12 +318,10 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
             newB = bg.subgraph(d)
             rows += newB.row_nodes
             cols += newB.col_nodes
-        df = bg.to_dataframe(rows=rows,cols=cols)
+        df = bg.to_dataframe(rows=rows, cols=cols)
     elif fmt.lower() == "bdf":
-        X_tilde = _to_tilde_form(bg, diags, borders)
-        df = [
-            item.to_dataframe() for item in X_tilde
-        ]
+        X_tilde = _to_tilde_form(bg, diags, is_border)
+        df = [item.to_dataframe() for item in X_tilde]
 
     if verbose == 0:
         metadata = ED()
@@ -298,8 +329,10 @@ def RBBDF_v2(df_or_arr:Union[pd.DataFrame, np.ndarray, Sequence], density_thresh
     return df, metadata
 
 
-def _compute_density(bg:BipartiteGraph, diags:Sequence[Sequence[str]], is_border:Sequence[bool]) -> float:
-    """ finished, checked,
+def _compute_density(
+    bg: BipartiteGraph, diags: Sequence[Sequence[str]], is_border: Sequence[bool]
+) -> float:
+    """finished, checked,
 
     compute density for a RBBDF BipartiteGraph
 
@@ -317,14 +350,19 @@ def _compute_density(bg:BipartiteGraph, diags:Sequence[Sequence[str]], is_border
     --------
     rho: float,
         density of the `BipartiteGraph` `bg`
+
     """
     X_tilde = _to_tilde_form(bg, diags, is_border)
-    rho = sum([item.n_nonzeros for item in X_tilde]) / sum([item.size for item in X_tilde])
+    rho = sum([item.n_nonzeros for item in X_tilde]) / sum(
+        [item.size for item in X_tilde]
+    )
     return rho
 
 
-def _to_tilde_form(bg:BipartiteGraph, diags:Sequence[Sequence[str]], is_border:Sequence[bool]) -> Sequence[BipartiteGraph]:
-    """ finished, checked,
+def _to_tilde_form(
+    bg: BipartiteGraph, diags: Sequence[Sequence[str]], is_border: Sequence[bool]
+) -> Sequence[BipartiteGraph]:
+    """finished, checked,
 
     transforms a `BipartiteGraph` to the corresponding BDF
 
@@ -342,21 +380,24 @@ def _to_tilde_form(bg:BipartiteGraph, diags:Sequence[Sequence[str]], is_border:S
     --------
     X_tilde: sequence of BipartiteGraph,
         each element is constructed from `bg`, according to rules of ref. [1]
+
     """
     X_tilde = []
     for idx, (d, ib) in enumerate(zip(diags, is_border)):
         if ib:
             continue
         block_nodes = deepcopy(d)
-        for new_idx in range(idx+1, len(diags)):
+        for new_idx in range(idx + 1, len(diags)):
             if is_border[new_idx]:
                 block_nodes += diags[new_idx]
         X_tilde.append(bg.subgraph(block_nodes))
     return X_tilde
 
 
-def _rbbdf_to_bdf(df_rbbdf:pd.DataFrame, diags:Sequence[Sequence[str]], is_border:Sequence[bool]) -> Sequence[BipartiteGraph]:
-    """ finished, checked,
+def _rbbdf_to_bdf(
+    df_rbbdf: pd.DataFrame, diags: Sequence[Sequence[str]], is_border: Sequence[bool]
+) -> Sequence[BipartiteGraph]:
+    """finished, checked,
 
     transforms a RBBDF `DataFrame` of to the format of BDF
 
@@ -369,15 +410,14 @@ def _rbbdf_to_bdf(df_rbbdf:pd.DataFrame, diags:Sequence[Sequence[str]], is_borde
         which corresponds to a diagonal block in the corresponding matrix
     is_border: sequence of bool,
         "border" indicators for elements in `diags`,
-    
+
     Returns:
     --------
     X_tilde: sequence of BipartiteGraph,
         each element is constructed from `bg`, according to rules of ref. [1]
+
     """
     bg = BipartiteGraph.from_dataframe(df_rbbdf)
     X_tilde = _to_tilde_form(bg, diags, is_border)
-    X_tilde = [
-        bg.subgraph(item).to_dataframe() for item in X_tilde
-    ]
+    X_tilde = [bg.subgraph(item).to_dataframe() for item in X_tilde]
     return X_tilde
